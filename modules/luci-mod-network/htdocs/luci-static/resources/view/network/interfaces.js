@@ -67,49 +67,59 @@ function render_status(node, ifc, with_device) {
 
 	var i18n = ifc.getI18n();
 	if (i18n)
-		desc = desc ? '%s (%s)'.format(desc, i18n) : i18n;
+		desc = desc ? '%s (%s)'.format(i18n, desc) : i18n;
 
 	var changecount = with_device ? 0 : count_changes(ifc.getName()),
 	    ipaddrs = changecount ? [] : ifc.getIPAddrs(),
 	    ip6addrs = changecount ? [] : ifc.getIP6Addrs(),
 	    errors = ifc.getErrors(),
 	    maindev = ifc.getL3Device() || ifc.getDevice(),
-	    macaddr = maindev ? maindev.getMAC() : null;
+	    macaddr = maindev ? maindev.getMAC() : null,
+	    expires = ifc.getExpiry()
 
-	return L.itemlist(node, [
-		_('Protocol'), with_device ? null : (desc || '?'),
-		_('Device'),   with_device ? (maindev ? maindev.getShortName() : E('em', _('Not present'))) : null,
-		_('Uptime'),   (!changecount && ifc.isUp()) ? '%t'.format(ifc.getUptime()) : null,
-		_('MAC'),      (!changecount && !ifc.isDynamic() && !ifc.isAlias() && macaddr) ? macaddr : null,
-		_('RX'),       (!changecount && !ifc.isDynamic() && !ifc.isAlias() && maindev) ? '%.2mB (%d %s)'.format(maindev.getRXBytes(), maindev.getRXPackets(), _('Pkts.')) : null,
-		_('TX'),       (!changecount && !ifc.isDynamic() && !ifc.isAlias() && maindev) ? '%.2mB (%d %s)'.format(maindev.getTXBytes(), maindev.getTXPackets(), _('Pkts.')) : null,
-		_('IPv4'),     ipaddrs[0],
-		_('IPv4'),     ipaddrs[1],
-		_('IPv4'),     ipaddrs[2],
-		_('IPv4'),     ipaddrs[3],
-		_('IPv4'),     ipaddrs[4],
-		_('IPv6'),     ip6addrs[0],
-		_('IPv6'),     ip6addrs[1],
-		_('IPv6'),     ip6addrs[2],
-		_('IPv6'),     ip6addrs[3],
-		_('IPv6'),     ip6addrs[4],
-		_('IPv6'),     ip6addrs[5],
-		_('IPv6'),     ip6addrs[6],
-		_('IPv6'),     ip6addrs[7],
-		_('IPv6'),     ip6addrs[8],
-		_('IPv6'),     ip6addrs[9],
-		_('IPv6-PD'),  changecount ? null : ifc.getIP6Prefix(),
-		_('Information'), with_device ? null : (ifc.get('auto') != '0' ? null : _('Not started on boot')),
-		_('Error'),    errors ? errors[0] : null,
-		_('Error'),    errors ? errors[1] : null,
-		_('Error'),    errors ? errors[2] : null,
-		_('Error'),    errors ? errors[3] : null,
-		_('Error'),    errors ? errors[4] : null,
-		null, changecount ? E('a', {
-			href: '#',
-			click: L.bind(ui.changes.displayChanges, ui.changes)
-		}, _('Interface has %d pending changes').format(changecount)) : null
+	const interfaceStatus = changecount ? null : ifc.renderStatus(E('div'), false);
+	dom.content(node, [
+		L.itemlist(E('div'), [
+			_('Protocol'), with_device ? null : (desc || '?'),
+			_('Device'),   with_device ? (maindev ? maindev.getShortName() : E('em', _('Not present'))) : null,
+			_('Uptime'),   (!changecount && ifc.isUp()) ? '%t'.format(ifc.getUptime()) : null,
+			_('MAC'),      (!changecount && !ifc.isDynamic() && !ifc.isAlias() && macaddr) ? macaddr : null,
+			_('RX'),       (!changecount && !ifc.isDynamic() && !ifc.isAlias() && maindev) ? '%.2mB (%d %s)'.format(maindev.getRXBytes(), maindev.getRXPackets(), _('Pkts.')) : null,
+			_('TX'),       (!changecount && !ifc.isDynamic() && !ifc.isAlias() && maindev) ? '%.2mB (%d %s)'.format(maindev.getTXBytes(), maindev.getTXPackets(), _('Pkts.')) : null,
+		]),
+		interfaceStatus ? interfaceStatus : L.itemlist(E('div'), [
+			_('IPv4'),     ipaddrs[0],
+			_('IPv4'),     ipaddrs[1],
+			_('IPv4'),     ipaddrs[2],
+			_('IPv4'),     ipaddrs[3],
+			_('IPv4'),     ipaddrs[4],
+			_('IPv6'),     ip6addrs[0],
+			_('IPv6'),     ip6addrs[1],
+			_('IPv6'),     ip6addrs[2],
+			_('IPv6'),     ip6addrs[3],
+			_('IPv6'),     ip6addrs[4],
+			_('IPv6'),     ip6addrs[5],
+			_('IPv6'),     ip6addrs[6],
+			_('IPv6'),     ip6addrs[7],
+			_('IPv6'),     ip6addrs[8],
+			_('IPv6'),     ip6addrs[9],
+			_('IPv6-PD'),  changecount ? null : ifc.getIP6Prefix()
+		]),
+		L.itemlist(E('div'), [
+			_('Information'), with_device ? null : (ifc.get('auto') != '0' ? null : _('Not started on boot')),
+			_('Expires'),  (!changecount && expires != null && expires > -1) ? '%t'.format(expires) : null,
+			_('Error'),    errors ? errors[0] : null,
+			_('Error'),    errors ? errors[1] : null,
+			_('Error'),    errors ? errors[2] : null,
+			_('Error'),    errors ? errors[3] : null,
+			_('Error'),    errors ? errors[4] : null,
+			null, changecount ? E('a', {
+				href: '#',
+				click: L.bind(ui.changes.displayChanges, ui.changes)
+			}, _('Interface has %d pending changes').format(changecount)) : null
+		])
 	]);
+	return node;
 }
 
 function render_modal_status(node, ifc) {
@@ -148,7 +158,10 @@ function render_ifacebox_status(node, ifc) {
 
 	dom.content(node, c);
 
-	return firewall.getZoneByNetwork(ifc.getName()).then(L.bind(function(zone) {
+	const zonePromise = ifc.getZoneName() ? firewall.getZone(ifc.getZoneName())
+		: firewall.getZoneByNetwork(ifc.getName())
+
+	return zonePromise.then(L.bind(function(zone) {
 		this.style.backgroundColor = zone ? zone.getColor() : '#EEEEEE';
 		this.title = zone ? _('Part of zone %q').format(zone.getName()) : _('No zone assigned');
 	}, node.previousElementSibling));
@@ -305,14 +318,16 @@ return view.extend({
 			}
 
 			if (stat) {
-				var dev = ifc.getDevice();
-				dom.content(stat, [
-					E('img', {
-						'src': L.resource('icons/%s%s.png').format(dev ? dev.getType() : 'ethernet', (dev && dev.isUp()) ? '' : '_disabled'),
-						'title': dev ? dev.getTypeI18n() : _('Not present')
-					}),
-					render_status(E('span'), ifc, true)
-				]);
+		        if(!ifc.renderStatus(stat, true)) {
+					var dev = ifc.getDevice();
+					dom.content(stat, [
+						E('img', {
+							'src': L.resource('icons/%s%s.png').format(dev ? dev.getType() : 'ethernet', (dev && dev.isUp()) ? '' : '_disabled'),
+							'title': dev ? dev.getTypeI18n() : _('Not present')
+						}),
+						render_status(E('span'), ifc, true)
+					]);
+				}
 			}
 
 			btn1.disabled = isReadonlyView || btn1.classList.contains('spinning') || btn2.classList.contains('spinning') || dynamic;
@@ -474,6 +489,7 @@ return view.extend({
 			}, this));
 		};
 
+		s.tab('status', _('Status'));
 		s.tab('general', _('General Settings'));
 		s.tab('advanced', _('Advanced Settings'));
 		s.tab('physical', _('Physical Settings'));
@@ -514,6 +530,40 @@ return view.extend({
 				tdEl.lastChild.lastChild
 			]);
 
+            if(dynamic && net && !uci.get('network', net.getName())) {
+                dom.content(tdEl.lastChild, [
+                    tdEl.lastChild.firstChild,
+                    tdEl.lastChild.childNodes[1],
+                    E('button', {
+                        'class': 'cbi-button cbi-button-edit',
+                        'click': function() {
+                            var renderStatus = net.renderStatus(E('div'), true);
+                            return Promise.resolve(renderStatus).then(L.bind(function(nodes) {
+                                var modal = ui.showModal(_('Status') + ' » ' + this.getName(), [
+                                    nodes,
+                                    E('div', {
+                                        'class': 'right'
+                                    }, [
+                                        E('button', {
+                                            'class': 'cbi-button cbi-button-neutral',
+                                            'click': function (ev) {
+                                                ui.hideModal();
+                                            }
+                                        }, _('Close')),
+                                    ])
+                                ]);
+
+                                modal.style.maxWidth = '50%';
+                                modal.style.maxHeight = 'none';
+                            }, net)).catch(L.error);
+                        },
+                        'title': _('Status'),
+                        'disabled': (net.renderStatus(E('div'), true)) ? null : 'disabled'
+                    }, _('Status')),
+                    tdEl.lastChild.lastChild
+                ]);
+            }
+
 			if (!dynamic && net && !uci.get('network', net.getName())) {
 				tdEl.lastChild.childNodes[0].disabled = true;
 				tdEl.lastChild.childNodes[2].disabled = true;
@@ -538,18 +588,29 @@ return view.extend({
 					return a.getProtocol() > b.getProtocol();
 				});
 
-				o = s.taboption('general', form.DummyValue, '_ifacestat_modal', _('Status'));
-				o.modalonly = true;
-				o.cfgvalue = L.bind(function(section_id) {
-					var net = this.networks.filter(function(n) { return n.getName() == section_id })[0];
+				var node = E('div', {
+					'id': '%s-ifc-status'.format(s.section),
+				});
+				var ifc = this.networks.filter(function(n) { return n.getName() == s.section })[0];
+				var customStatus = ifc ? ifc.renderStatus(node, true) : null;
+				if(customStatus) {
+					o = s.taboption('status', form.DummyValue, '_ifacestat_modal');
+					o.modalonly = true;
+					o.cfgvalue = L.bind(function(section_id) {
+						return node;
+					}, this);
+					o.write = function() {};
+				} else {
+					o = s.taboption('general', form.DummyValue, '_ifacestat_modal', _('Status'));
+					o.modalonly = true;
+					o.cfgvalue = L.bind(function(section_id) {
+						var net = this.networks.filter(function(n) { return n.getName() == section_id })[0];
+						node.class = 'ifacebadge large';
 
-					return render_modal_status(E('div', {
-						'id': '%s-ifc-status'.format(section_id),
-						'class': 'ifacebadge large'
-					}), net);
-				}, this);
-				o.write = function() {};
-
+						return render_modal_status(node, net);
+					}, this);
+					o.write = function() {};
+				}
 
 				proto_select = s.taboption('general', form.ListValue, 'proto', _('Protocol'));
 				proto_select.modalonly = true;
